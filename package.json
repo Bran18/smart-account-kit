@@ -64,7 +64,7 @@
     "node": ">=22.0.0",
     "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@10.26.1",
   "peerDependencies": {
     "@creit-tech/stellar-wallets-kit": ">=2.0.0",
     "@stellar/stellar-sdk": ">=14.0.0"

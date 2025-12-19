@@ -116,8 +116,23 @@ fi
 
 # Step 1: Update root and demo dependencies (before bindings generation)
 echo -e "${YELLOW}Step 1: Updating package dependencies (root & demo)...${NC}"
+
+# Preserve packageManager field (ncu/pnpm can overwrite it)
+PACKAGE_MANAGER=$(node -p "require('$KIT_DIR/package.json').packageManager || ''")
+
 update_dependencies "$KIT_DIR" "smart-account-kit (root)"
 update_dependencies "$KIT_DIR/demo" "demo"
+
+# Restore packageManager if it was changed
+if [ -n "$PACKAGE_MANAGER" ]; then
+    node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('$KIT_DIR/package.json', 'utf8'));
+pkg.packageManager = '$PACKAGE_MANAGER';
+fs.writeFileSync('$KIT_DIR/package.json', JSON.stringify(pkg, null, 2) + '\n');
+"
+fi
+
 echo -e "${GREEN}✓ Dependencies updated${NC}"
 echo ""
 
@@ -179,6 +194,10 @@ pkg.license = 'MIT';
 pkg.repository = { type: 'git', url: 'https://github.com/kalepail/smart-account-kit' };
 pkg.peerDependencies = { '@stellar/stellar-sdk': '>=14.0.0' };
 pkg.publishConfig = { registry: 'https://registry.npmjs.org/', access: 'public' };
+// Remove @stellar/stellar-sdk from dependencies (it's a peerDependency, root package handles version)
+if (pkg.dependencies && pkg.dependencies['@stellar/stellar-sdk']) {
+  delete pkg.dependencies['@stellar/stellar-sdk'];
+}
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 
