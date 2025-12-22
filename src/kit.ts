@@ -39,6 +39,7 @@ import type {
   ConnectWalletResult,
   TransactionResult,
   SubmissionOptions,
+  SubmissionMethod,
   ExternalWalletAdapter,
   SelectedSigner,
   ConnectedWallet,
@@ -93,8 +94,8 @@ import {
   type ContractDetailsResponse,
 } from "./indexer";
 
-// Launchtube client for fee-sponsored transactions
-import { LaunchtubeClient } from "./launchtube";
+// Relayer client for fee-sponsored transactions via proxy
+import { RelayerClient } from "./relayer";
 
 // Manager classes
 import {
@@ -567,30 +568,30 @@ export class SmartAccountKit {
   public readonly indexer: IndexerClient | null;
 
   /**
-   * Optional Launchtube client for fee-sponsored transaction submission.
+   * Optional Relayer client for fee-sponsored transaction submission.
    *
    * When configured, allows submitting transactions without paying fees -
-   * the fees are sponsored by the Launchtube service.
+   * the fees are sponsored by the Relayer proxy service.
+   *
+   * The Relayer uses channel accounts for parallel transaction submission with
+   * automatic fee bumping, eliminating sequence number conflicts.
    *
    * @example
    * ```typescript
-   * // Configure Launchtube in the kit
+   * // Configure Relayer in the kit
    * const kit = new SmartAccountKit({
    *   // ... other config
-   *   launchtube: {
-   *     url: 'https://launchtube.xyz',
-   *     jwt: 'your-jwt-token',
-   *   },
+   *   relayerUrl: 'https://my-relayer-proxy.example.com/submit',
    * });
    *
-   * // Submit a transaction via Launchtube
-   * if (kit.launchtube) {
-   *   const result = await kit.launchtube.send(signedTransaction);
+   * // Submit a transaction via Relayer
+   * if (kit.relayer) {
+   *   const result = await kit.relayer.send(signedTransaction);
    *   console.log('Hash:', result.hash);
    * }
    * ```
    */
-  public readonly launchtube: LaunchtubeClient | null;
+  public readonly relayer: RelayerClient | null;
 
   constructor(config: SmartAccountConfig) {
     // Validate required config
@@ -639,10 +640,10 @@ export class SmartAccountKit {
         : null;
     }
 
-    // Launchtube client for fee-sponsored transactions (optional)
+    // Relayer client for fee-sponsored transactions via proxy (optional)
     // Only initialize if url is provided
-    this.launchtube = config.launchtube?.url
-      ? new LaunchtubeClient(config.launchtube)
+    this.relayer = config.relayerUrl
+      ? new RelayerClient(config.relayerUrl)
       : null;
 
     // Deployer keypair - deterministically derived from network passphrase
@@ -703,7 +704,7 @@ export class SmartAccountKit {
         this.submitDeploymentTx(tx as contract.AssembledTransaction<null>, credentialId, options),
       deriveContractAddress: (credentialIdBuffer) =>
         deriveContractAddress(credentialIdBuffer, this.deployerKeypair.publicKey(), this.networkPassphrase),
-      shouldUseLaunchtube: (options) => this.shouldUseLaunchtube(options),
+      shouldUseFeeSponsoring: (options) => this.shouldUseFeeSponsoring(options),
     });
 
     this.multiSigners = new MultiSignerManagerClass({
@@ -721,7 +722,7 @@ export class SmartAccountKit {
       hasSourceAccountAuth: (tx) => this.hasSourceAccountAuth(tx),
       executeTransfer: (tokenContract, recipient, amount, selectedSigners, options) =>
         this.multiSignersTransfer(tokenContract, recipient, amount, selectedSigners, options),
-      shouldUseLaunchtube: (options) => this.shouldUseLaunchtube(options),
+      shouldUseFeeSponsoring: (options) => this.shouldUseFeeSponsoring(options),
     });
   }
 
@@ -912,6 +913,10 @@ export class SmartAccountKit {
    * Submit a deployment transaction and update credential storage.
    * On success, deletes the credential from storage.
    * On failure, marks it as failed for retry.
+   *
+   * Deployment uses source_account auth (envelope signature). When using Relayer,
+   * the signed XDR is submitted for fee-bumping. The inner tx signature is preserved.
+   *
    * @internal
    */
   private async submitDeploymentTx<T>(
@@ -923,16 +928,19 @@ export class SmartAccountKit {
       let hash: string;
       let ledger: number | undefined;
 
-      // Use Launchtube if configured and not explicitly skipped
-      // Must use tx.signed (not tx.built) so the deployer's signature is preserved
-      if (this.shouldUseLaunchtube(options) && tx.signed) {
-        const launchtubeResult = await this.launchtube!.send(tx.signed);
+      const method = this.getSubmissionMethod(options);
 
-        if (!launchtubeResult.success) {
-          throw new Error(launchtubeResult.error ?? "Launchtube submission failed");
+      if (method === "relayer" && tx.signed && this.relayer) {
+        // Use Relayer - send signed XDR for fee-bumping
+        // Deployment uses source_account auth, so we send the signed transaction
+        // and the Relayer fee-bumps it (preserving inner signature)
+        const relayerResult = await this.relayer.sendXdr(tx.signed);
+
+        if (!relayerResult.success) {
+          throw new Error(relayerResult.error ?? "Relayer submission failed");
         }
 
-        hash = launchtubeResult.hash ?? "";
+        hash = relayerResult.hash ?? "";
 
         // Poll for confirmation
         const txResult = await this.rpc.pollTransaction(hash, { attempts: 10 });
@@ -942,7 +950,7 @@ export class SmartAccountKit {
           throw new Error("Transaction failed on-chain");
         }
       } else {
-        // Use SDK's built-in send()
+        // Use RPC directly
         const sentTx = await tx.send();
         const txResponse = sentTx.getTransactionResponse;
         hash = sentTx.sendTransactionResponse?.hash ?? "";
@@ -999,8 +1007,8 @@ export class SmartAccountKit {
       autoFund?: boolean;
       /** Native XLM token SAC address (required for autoFund) */
       nativeTokenContract?: string;
-      /** Skip Launchtube and submit directly via RPC (default: false) */
-      skipLaunchtube?: boolean;
+      /** Force a specific submission method (relayer or rpc) */
+      forceMethod?: SubmissionMethod;
     }
   ): Promise<CreateWalletResult & { submitResult?: TransactionResult; fundResult?: TransactionResult & { amount?: number } }> {
     // Step 1: Create a new passkey
@@ -1040,8 +1048,8 @@ export class SmartAccountKit {
 
     // Sign the deployment transaction with the deployer keypair
     // Deployment uses source_account auth which requires envelope signature
-    // This works with Launchtube because fee bump preserves inner tx signatures
-    const submissionOpts = { skipLaunchtube: options?.skipLaunchtube };
+    // When using Relayer, the signed XDR is fee-bumped (inner signature preserved)
+    const submissionOpts: SubmissionOptions = { forceMethod: options?.forceMethod };
     await this.signWithDeployer(deployTx);
     if (!deployTx.signed) {
       throw new Error("Failed to sign deployment transaction");
@@ -1071,12 +1079,13 @@ export class SmartAccountKit {
       : undefined;
 
     // Step 6: Optionally fund the wallet on testnet (only if deployment succeeded)
+    // Funding can use Relayer since it's a transfer operation with Address auth
     let fundResult: (TransactionResult & { amount?: number }) | undefined;
     if (options?.autoFund && submitResult?.success) {
       if (!options.nativeTokenContract) {
         fundResult = { success: false, hash: "", error: "nativeTokenContract is required for autoFund" };
       } else {
-        fundResult = await this.fundWallet(options.nativeTokenContract, submissionOpts);
+        fundResult = await this.fundWallet(options.nativeTokenContract, { forceMethod: options?.forceMethod });
       }
     }
 
@@ -1438,8 +1447,8 @@ export class SmartAccountKit {
     options?: {
       credentialId?: string;
       expiration?: number;
-      /** Skip Launchtube and submit directly via RPC (default: false) */
-      skipLaunchtube?: boolean;
+      /** Force a specific submission method (relayer or rpc) */
+      forceMethod?: SubmissionMethod;
     }
   ): Promise<TransactionResult> {
     if (!this._contractId) {
@@ -1479,10 +1488,10 @@ export class SmartAccountKit {
         { credentialId: options?.credentialId, expiration: options?.expiration }
       );
 
-      // Sign with deployer keypair if not using Launchtube, or if tx has source_account auth
+      // Sign with deployer keypair if not using fee sponsoring, or if tx has source_account auth
       // (source_account auth requires envelope signature; Address auth has signature in entry)
-      const submissionOpts = { skipLaunchtube: options?.skipLaunchtube };
-      if (!this.shouldUseLaunchtube(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
+      const submissionOpts: SubmissionOptions = { forceMethod: options?.forceMethod };
+      if (!this.shouldUseFeeSponsoring(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
         preparedTx.sign(this.deployerKeypair);
       }
 
@@ -1633,8 +1642,8 @@ export class SmartAccountKit {
   async fundWallet(
     nativeTokenContract: string,
     options?: {
-      /** Skip Launchtube and submit directly via RPC (default: false) */
-      skipLaunchtube?: boolean;
+      /** Force a specific submission method (relayer or rpc) */
+      forceMethod?: SubmissionMethod;
     }
   ): Promise<TransactionResult & { amount?: number }> {
     if (!this._contractId) {
@@ -1824,10 +1833,10 @@ export class SmartAccountKit {
       // Use SDK's assembleTransaction to apply fees and soroban data
       const preparedTx = assembleTransaction(normalizedTxWithAuth as Transaction, simResult).build();
 
-      // Sign with temp keypair if not using Launchtube, or if tx has source_account auth
+      // Sign with temp keypair if not using fee sponsoring, or if tx has source_account auth
       // (source_account auth requires envelope signature; Address auth has signature in entry)
-      const submissionOpts = { skipLaunchtube: options?.skipLaunchtube };
-      if (!this.shouldUseLaunchtube(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
+      const submissionOpts: SubmissionOptions = { forceMethod: options?.forceMethod };
+      if (!this.shouldUseFeeSponsoring(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
         preparedTx.sign(tempKeypair);
       }
 
@@ -1868,8 +1877,8 @@ export class SmartAccountKit {
     options?: {
       /** Credential ID to use for signing (defaults to connected credential) */
       credentialId?: string;
-      /** Skip Launchtube and submit directly via RPC (default: false) */
-      skipLaunchtube?: boolean;
+      /** Force a specific submission method (relayer or rpc) */
+      forceMethod?: SubmissionMethod;
     }
   ): Promise<TransactionResult> {
     if (!this._contractId) {
@@ -1934,10 +1943,10 @@ export class SmartAccountKit {
         { credentialId: options?.credentialId }
       );
 
-      // Sign with deployer keypair if not using Launchtube, or if tx has source_account auth
+      // Sign with deployer keypair if not using fee sponsoring, or if tx has source_account auth
       // (source_account auth requires envelope signature; Address auth has signature in entry)
-      const submissionOpts = { skipLaunchtube: options?.skipLaunchtube };
-      if (!this.shouldUseLaunchtube(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
+      const submissionOpts: SubmissionOptions = { forceMethod: options?.forceMethod };
+      if (!this.shouldUseFeeSponsoring(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
         preparedTx.sign(this.deployerKeypair);
       }
 
@@ -1960,7 +1969,7 @@ export class SmartAccountKit {
    * Check if a transaction has any auth entries using source_account credentials.
    *
    * When auth uses source_account credentials, the authorization comes from the
-   * transaction envelope signature, so we MUST sign even when using Launchtube.
+   * transaction envelope signature, so we MUST sign even when using fee sponsoring.
    * For Address credentials, the authorization is in the auth entry itself.
    *
    * @param transaction - The transaction to check
@@ -2122,53 +2131,132 @@ export class SmartAccountKit {
   }
 
   /**
-   * Check if Launchtube should be used for this submission.
-   * Launchtube is used by default when configured, unless explicitly skipped.
+   * Determine which submission method to use based on configuration and options.
+   *
+   * Priority order (when not forced):
+   * 1. Relayer (if configured)
+   * 2. RPC (always available)
+   *
+   * @param options - Submission options
+   * @returns The submission method to use
    */
-  private shouldUseLaunchtube(options?: SubmissionOptions): boolean {
-    if (!this.launchtube) return false;
-    if (options?.skipLaunchtube) return false;
-    return true;
+  private getSubmissionMethod(options?: SubmissionOptions): SubmissionMethod {
+    // Handle forced method
+    if (options?.forceMethod) {
+      return options.forceMethod;
+    }
+
+    // Priority order: Relayer → RPC
+    if (this.relayer) {
+      return "relayer";
+    }
+
+    return "rpc";
+  }
+
+  /**
+   * Check if fee sponsoring service (Relayer) should be used.
+   * When using fee sponsoring, transactions are wrapped in a fee-bump, so the
+   * envelope signature is generally not required (unless source_account auth is present).
+   */
+  private shouldUseFeeSponsoring(options?: SubmissionOptions): boolean {
+    const method = this.getSubmissionMethod(options);
+    return method === "relayer";
+  }
+
+  /**
+   * Check if Relayer should be used for this submission.
+   */
+  private shouldUseRelayer(options?: SubmissionOptions): boolean {
+    const method = this.getSubmissionMethod(options);
+    return method === "relayer";
   }
 
   /**
    * Send a transaction and poll for confirmation.
-   * Uses Launchtube for fee sponsoring if configured (default), otherwise submits directly via RPC.
+   *
+   * Uses the following priority for submission (unless overridden):
+   * 1. Relayer (if configured) - submits func + auth entries
+   * 2. RPC (direct submission) - submits full transaction XDR
+   *
    * @param transaction - The transaction to submit
-   * @param options - Submission options (use skipLaunchtube to bypass Launchtube)
+   * @param options - Submission options
+   * @returns Transaction result with hash and status
    */
   private async sendAndPoll(
     transaction: Transaction,
     options?: SubmissionOptions
   ): Promise<TransactionResult> {
+    const method = this.getSubmissionMethod(options);
     let hash: string;
 
-    // Use Launchtube if configured and not explicitly skipped
-    if (this.shouldUseLaunchtube(options)) {
-      const launchtubeResult = await this.launchtube!.send(transaction);
+    // Submit using the appropriate method
+    switch (method) {
+      case "relayer": {
+        if (!this.relayer) {
+          return {
+            success: false,
+            hash: "",
+            error: "Relayer is not configured",
+          };
+        }
 
-      if (!launchtubeResult.success) {
-        return {
-          success: false,
-          hash: "",
-          error: launchtubeResult.error ?? "Launchtube submission failed",
-        };
+        // Extract func and auth from the transaction
+        // Relayer always uses func + auth format, never full XDR
+        const operations = transaction.operations;
+        if (operations.length !== 1) {
+          return {
+            success: false,
+            hash: "",
+            error: "Relayer requires exactly one invokeHostFunction operation",
+          };
+        }
+
+        const op = operations[0];
+        if (op.type !== "invokeHostFunction") {
+          return {
+            success: false,
+            hash: "",
+            error: "Relayer only supports invokeHostFunction operations",
+          };
+        }
+
+        const invokeOp = op as Operation.InvokeHostFunction;
+
+        // Convert func and auth to base64 XDR
+        const funcXdr = invokeOp.func.toXDR("base64");
+        const authXdrs = (invokeOp.auth ?? []).map((entry) => entry.toXDR("base64"));
+
+        const relayerResult = await this.relayer.send(funcXdr, authXdrs);
+
+        if (!relayerResult.success) {
+          return {
+            success: false,
+            hash: "",
+            error: relayerResult.error ?? "Relayer submission failed",
+          };
+        }
+
+        hash = relayerResult.hash ?? "";
+        break;
       }
 
-      hash = launchtubeResult.hash ?? "";
-    } else {
-      // Submit directly via RPC
-      const sendResult = await this.rpc.sendTransaction(transaction);
+      case "rpc":
+      default: {
+        // Submit directly via RPC
+        const sendResult = await this.rpc.sendTransaction(transaction);
 
-      if (sendResult.status === "ERROR") {
-        return {
-          success: false,
-          hash: sendResult.hash,
-          error: sendResult.errorResult?.toXDR("base64") ?? "Transaction submission failed",
-        };
+        if (sendResult.status === "ERROR") {
+          return {
+            success: false,
+            hash: sendResult.hash,
+            error: sendResult.errorResult?.toXDR("base64") ?? "Transaction submission failed",
+          };
+        }
+
+        hash = sendResult.hash;
+        break;
       }
-
-      hash = sendResult.hash;
     }
 
     // Use SDK's built-in pollTransaction with linear backoff
@@ -2307,7 +2395,7 @@ export class SmartAccountKit {
     recipient: string,
     amount: number,
     selectedSigners: SelectedSigner[],
-    options?: MultiSignerOptions & { skipLaunchtube?: boolean }
+    options?: MultiSignerOptions & { forceMethod?: SubmissionMethod }
   ): Promise<TransactionResult> {
     const onLog = options?.onLog ?? (() => {});
 
@@ -2611,10 +2699,10 @@ export class SmartAccountKit {
       const assembled = assembleTransaction(normalizedTx as Transaction, resimResult);
       const preparedTx = assembled.build() as Transaction;
 
-      // Sign with deployer keypair if not using Launchtube, or if tx has source_account auth
+      // Sign with deployer keypair if not using fee sponsoring, or if tx has source_account auth
       // (source_account auth requires envelope signature; Address auth has signature in entry)
-      const submissionOpts = { skipLaunchtube: options?.skipLaunchtube };
-      if (!this.shouldUseLaunchtube(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
+      const submissionOpts: SubmissionOptions = { forceMethod: options?.forceMethod };
+      if (!this.shouldUseFeeSponsoring(submissionOpts) || this.hasSourceAccountAuth(preparedTx)) {
         preparedTx.sign(this.deployerKeypair);
       }
 

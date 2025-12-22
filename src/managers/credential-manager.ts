@@ -11,7 +11,7 @@ import type { Keypair } from "@stellar/stellar-sdk";
 import type { rpc } from "@stellar/stellar-sdk";
 import type { AuthenticatorTransportFuture } from "@simplewebauthn/browser";
 import type { SmartAccountEventEmitter } from "../events";
-import type { StorageAdapter, StoredCredential, TransactionResult } from "../types";
+import type { StorageAdapter, StoredCredential, SubmissionMethod, SubmissionOptions, TransactionResult } from "../types";
 
 /** Dependencies required by CredentialManager */
 export interface CredentialManagerDeps {
@@ -50,11 +50,11 @@ export interface CredentialManagerDeps {
   /** Sign deploy transaction with deployer keypair (envelope signature) */
   signWithDeployer: (tx: unknown) => Promise<void>;
   /** Submit deployment transaction */
-  submitDeploymentTx: (tx: unknown, credentialId: string, options?: { skipLaunchtube?: boolean }) => Promise<TransactionResult>;
+  submitDeploymentTx: (tx: unknown, credentialId: string, options?: SubmissionOptions) => Promise<TransactionResult>;
   /** Derive contract address from credential ID */
   deriveContractAddress: (credentialIdBuffer: Buffer) => string;
-  /** Check if Launchtube should be used (default when configured, unless skipLaunchtube is true) */
-  shouldUseLaunchtube: (options?: { skipLaunchtube?: boolean }) => boolean;
+  /** Check if fee sponsoring should be used */
+  shouldUseFeeSponsoring: (options?: SubmissionOptions) => boolean;
 }
 
 /**
@@ -148,7 +148,7 @@ export class CredentialManager {
    */
   async deploy(
     credentialId: string,
-    options?: { autoSubmit?: boolean; skipLaunchtube?: boolean }
+    options?: { autoSubmit?: boolean; forceMethod?: SubmissionMethod }
   ): Promise<{
     contractId: string;
     signedTransaction: string;
@@ -170,8 +170,8 @@ export class CredentialManager {
 
     // Sign the deployment transaction with the deployer keypair
     // Deployment uses source_account auth which requires envelope signature
-    // This works with Launchtube because fee bump preserves inner tx signatures
-    const submissionOpts = { skipLaunchtube: options?.skipLaunchtube };
+    // When using Relayer, the signed XDR is fee-bumped (inner signature preserved)
+    const submissionOpts = { forceMethod: options?.forceMethod };
     await this.deps.signWithDeployer(deployTx);
     if (!deployTx.signed) {
       throw new Error("Failed to sign deployment transaction");
