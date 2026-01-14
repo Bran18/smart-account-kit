@@ -16,7 +16,12 @@
 #   goldsky turbo apply ./pipeline-mainnet.yaml
 
 name: smart-account-signers-mainnet
-resource_size: m
+resource_size: xl
+
+config_overrides:
+  env:
+    STREAMLING__INTERNAL_BUFFER_SIZE: "1"
+    STREAMLING__RECORD_BATCH_SIZE: "1"
 
 sources:
   stellar_events:
