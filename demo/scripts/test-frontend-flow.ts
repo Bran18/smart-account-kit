@@ -8,7 +8,6 @@
 // Import exactly as the frontend does
 import {
   Contract,
-  Networks,
   nativeToScVal,
   Keypair,
   hash,
@@ -16,22 +15,23 @@ import {
   BASE_FEE,
   rpc,
 } from "@stellar/stellar-sdk";
+import {
+  CONFIG,
+  TEST_DESTINATION,
+  FRIENDBOT_URL,
+  STROOPS_PER_XLM,
+  DEFAULT_TX_TIMEOUT_SECONDS,
+  MAX_CONFIRMATION_RETRIES,
+  CONFIRMATION_CHECK_DELAY_MS,
+  DEPLOYER_ENTROPY,
+} from "./constants";
 
 const { Server } = rpc;
 
-const CONFIG = {
-  rpcUrl: "https://soroban-testnet.stellar.org",
-  networkPassphrase: Networks.TESTNET,
-  nativeTokenContract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-};
-
 // Derive the same deployer keypair used by the SDK (not used here, but matches frontend)
 const DEPLOYER_KEYPAIR = Keypair.fromRawEd25519Seed(
-  hash(Buffer.from("openzeppelin-smart-account-kit"))
+  hash(Buffer.from(DEPLOYER_ENTROPY))
 );
-
-// Test destination
-const TEST_DESTINATION = "CCIYFQ4FCK3WJ3YYUQPDEZZUVB63ZKMGBGOKGI5ZGT6HXUGHHAEHS2RE";
 
 async function testFrontendFlow() {
   console.log("=== Testing Frontend Flow ===\n");
@@ -46,7 +46,7 @@ async function testFrontendFlow() {
     // 2. Fund it with Friendbot (same as frontend)
     console.log("\n2. Requesting XLM from Friendbot...");
     const friendbotResponse = await fetch(
-      `https://friendbot.stellar.org?addr=${tempKeypair.publicKey()}`
+      `${FRIENDBOT_URL}?addr=${tempKeypair.publicKey()}`
     );
     if (!friendbotResponse.ok) {
       throw new Error("Friendbot request failed");
@@ -61,7 +61,7 @@ async function testFrontendFlow() {
     const sourceAccount = await server.getAccount(tempKeypair.publicKey());
 
     // Transfer 100 XLM to the smart wallet (same as frontend)
-    const amount = BigInt(100 * 10_000_000); // 100 XLM in stroops
+    const amount = BigInt(100 * STROOPS_PER_XLM); // 100 XLM in stroops
 
     console.log("\n4. Building transaction...");
     const transaction = new TransactionBuilder(sourceAccount, {
@@ -76,7 +76,7 @@ async function testFrontendFlow() {
           nativeToScVal(amount, { type: "i128" })
         )
       )
-      .setTimeout(30)
+      .setTimeout(DEFAULT_TX_TIMEOUT_SECONDS)
       .build();
 
     console.log("   Transaction built");
@@ -130,8 +130,8 @@ async function testFrontendFlow() {
       console.log("\n8. Transaction pending, waiting for confirmation...");
       let txResult = await server.getTransaction(result.hash);
       let attempts = 0;
-      while (txResult.status === "NOT_FOUND" && attempts < 30) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      while (txResult.status === "NOT_FOUND" && attempts < MAX_CONFIRMATION_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, CONFIRMATION_CHECK_DELAY_MS));
         txResult = await server.getTransaction(result.hash);
         attempts++;
         process.stdout.write(".");

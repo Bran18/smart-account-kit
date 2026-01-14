@@ -5,6 +5,14 @@
  * This enables discovering which contracts a user has access to based on their signer credentials.
  */
 
+import {
+  DEFAULT_INDEXER_TIMEOUT_MS,
+  API_PATH_LOOKUP,
+  API_PATH_LOOKUP_ADDRESS,
+  API_PATH_CONTRACT,
+  API_PATH_STATS,
+} from "./constants";
+
 // ============================================================================
 // Indexer Response Types
 // ============================================================================
@@ -170,7 +178,7 @@ export class IndexerClient {
   constructor(config: IndexerConfig) {
     // Remove trailing slash if present
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
-    this.timeout = config.timeout ?? 10000;
+    this.timeout = config.timeout ?? DEFAULT_INDEXER_TIMEOUT_MS;
   }
 
   /**
@@ -201,7 +209,7 @@ export class IndexerClient {
     // Ensure credential ID is lowercase hex
     const normalizedId = credentialId.toLowerCase().replace(/^0x/, "");
     const response = await this.fetch<CredentialLookupResponse>(
-      `/api/lookup/${normalizedId}`
+      `${API_PATH_LOOKUP}/${normalizedId}`
     );
     // Convert string counts to numbers (postgres returns strings for bigint)
     return {
@@ -222,7 +230,7 @@ export class IndexerClient {
    */
   async lookupByAddress(address: string): Promise<AddressLookupResponse> {
     const response = await this.fetch<AddressLookupResponse>(
-      `/api/lookup/address/${address}`
+      `${API_PATH_LOOKUP_ADDRESS}/${address}`
     );
     return {
       ...response,
@@ -247,7 +255,7 @@ export class IndexerClient {
   ): Promise<ContractDetailsResponse | null> {
     try {
       const response = await this.fetch<ContractDetailsResponse>(
-        `/api/contract/${contractId}`
+        `${API_PATH_CONTRACT}/${contractId}`
       );
       return {
         ...response,
@@ -268,7 +276,7 @@ export class IndexerClient {
    * Useful for debugging and monitoring.
    */
   async getStats(): Promise<IndexerStatsResponse> {
-    return this.fetch<IndexerStatsResponse>("/api/stats");
+    return this.fetch<IndexerStatsResponse>(API_PATH_STATS);
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "name": "smart-account-kit",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "description": "TypeScript SDK for deploying and managing OpenZeppelin Smart Account contracts on Stellar/Soroban with WebAuthn passkey authentication",
   "type": "module",
   "main": "dist/index.js",
@@ -22,15 +22,17 @@
     "LICENSE"
   ],
   "scripts": {
+    "version:sync": "node scripts/sync-version.js",
+    "prebuild": "node scripts/sync-version.js",
     "build": "tsc",
     "build:all": "./scripts/build.sh",
-    "build:bindings": "pnpm --filter smart-account-kit-bindings build",
-    "build:demo": "pnpm build:bindings && pnpm build && pnpm --filter smart-account-kit-demo build",
-    "build:demo:full": "pnpm build:all && pnpm --filter smart-account-kit-demo build",
+    "build:bindings": "./scripts/bindings/build.sh",
+    "build:demo": "pnpm build && pnpm --filter smart-account-kit-demo build",
     "build:watch": "tsc --watch",
     "clean": "rm -rf dist packages/smart-account-kit-bindings/dist",
     "test": "vitest",
-    "prepublishOnly": "pnpm run build:all"
+    "release": "./scripts/publish.sh",
+    "release:bindings": "./scripts/bindings/publish.sh"
   },
   "keywords": [
     "stellar",

@@ -43,7 +43,7 @@ import {
 } from "smart-account-kit-bindings";
 
 // Constants
-import { DEFAULT_SESSION_EXPIRY_MS } from "./constants";
+import { DEFAULT_SESSION_EXPIRY_MS, LEDGERS_PER_HOUR } from "./constants";
 
 // Error classes
 import {
@@ -364,7 +364,7 @@ export class SmartAccountKit {
     this.accountWasmHash = config.accountWasmHash;
     this.webauthnVerifierAddress = config.webauthnVerifierAddress;
     this.timeoutInSeconds = config.timeoutInSeconds ?? 30;
-    this.signatureExpirationLedgers = config.signatureExpirationLedgers ?? 720; // ~1 hour
+    this.signatureExpirationLedgers = config.signatureExpirationLedgers ?? LEDGERS_PER_HOUR; // ~1 hour
 
     // WebAuthn
     this.rpId = config.rpId;

@@ -419,14 +419,8 @@ export function createSpendingLimitParams(
 // Utility Constants for Spending Limit
 // ============================================================================
 
-/** Approximate number of ledgers per hour (~5 seconds per ledger) */
-export const LEDGERS_PER_HOUR = 720;
-
-/** Approximate number of ledgers per day */
-export const LEDGERS_PER_DAY = 17280;
-
-/** Approximate number of ledgers per week */
-export const LEDGERS_PER_WEEK = 120960;
+// Re-export ledger constants from centralized location
+export { LEDGERS_PER_HOUR, LEDGERS_PER_DAY, LEDGERS_PER_WEEK } from "./constants";
 
 // ============================================================================
 // Helper Functions

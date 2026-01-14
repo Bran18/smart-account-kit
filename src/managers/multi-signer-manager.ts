@@ -20,7 +20,7 @@ import type { AssembledTransaction } from "@stellar/stellar-sdk/contract";
 import type { Signer as ContractSigner, ContextRuleType } from "smart-account-kit-bindings";
 import type { ExternalSignerManager } from "../external-signers";
 import type { SelectedSigner, SubmissionOptions, TransactionResult } from "../types";
-import { BASE_FEE } from "../constants";
+import { BASE_FEE, AUTH_ENTRY_EXPIRATION_BUFFER } from "../constants";
 import { getCredentialIdFromSigner, collectUniqueSigners } from "../builders";
 
 /** Type guard for transaction result with status and hash properties */
@@ -247,7 +247,7 @@ export class MultiSignerManager {
 
       const signedAuthEntries: xdr.SorobanAuthorizationEntry[] = [];
       const { sequence } = await this.deps.rpc.getLatestLedger();
-      const expiration = sequence + 100;
+      const expiration = sequence + AUTH_ENTRY_EXPIRATION_BUFFER;
 
       for (const entry of authEntries) {
         const credentials = entry.credentials();

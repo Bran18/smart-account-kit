@@ -17,6 +17,8 @@ import type { RelayerClient } from "../relayer";
 import {
   BASE_FEE,
   FRIENDBOT_RESERVE_XLM,
+  FRIENDBOT_URL,
+  LEDGERS_PER_HOUR,
 } from "../constants";
 import { validateAddress, validateAmount, xlmToStroops, stroopsToXlm } from "../utils";
 
@@ -398,7 +400,7 @@ export async function fundWallet(
     const tempKeypair = Keypair.random();
 
     const friendbotResponse = await fetch(
-      `https://friendbot.stellar.org?addr=${tempKeypair.publicKey()}`
+      `${FRIENDBOT_URL}?addr=${tempKeypair.publicKey()}`
     );
 
     if (!friendbotResponse.ok) {
@@ -486,7 +488,7 @@ export async function fundWallet(
     const signedAuthEntries: xdr.SorobanAuthorizationEntry[] = [];
 
     const currentLedger = simResult.latestLedger;
-    const expirationLedger = currentLedger + 720; // ~1 hour
+    const expirationLedger = currentLedger + LEDGERS_PER_HOUR; // ~1 hour
 
     for (const entry of authEntries) {
       const credType = entry.credentials().switch().name;

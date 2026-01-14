@@ -13,6 +13,7 @@ import {
 } from "smart-account-kit";
 import { Networks, rpc, Asset } from "@stellar/stellar-sdk";
 import type { ContextRule, Signer } from "smart-account-kit-bindings";
+import { STROOPS_PER_XLM, MAX_LOG_ENTRIES } from "./constants";
 
 // Import new components
 import { ContextRulesPanel, ContextRuleBuilder, ActiveSignerDisplay, SignerPicker } from "./components";
@@ -141,7 +142,7 @@ function App() {
     (message: string, type: LogEntry["type"] = "info") => {
       setLogs((prev) => [
         { message, type, timestamp: new Date() },
-        ...prev.slice(0, 49),
+        ...prev.slice(0, MAX_LOG_ENTRIES - 1),
       ]);
     },
     []
@@ -173,7 +174,7 @@ function App() {
       );
       if (result.balanceEntry) {
         // Convert from stroops to XLM
-        const xlmBalance = (Number(result.balanceEntry.amount) / 10_000_000).toFixed(2);
+        const xlmBalance = (Number(result.balanceEntry.amount) / STROOPS_PER_XLM).toFixed(2);
         setBalance(xlmBalance);
       } else {
         setBalance("0.00");

@@ -7,25 +7,23 @@
 
 import {
   Contract,
-  Networks,
   nativeToScVal,
   Keypair,
   TransactionBuilder,
   BASE_FEE,
   rpc,
 } from "@stellar/stellar-sdk";
+import {
+  CONFIG,
+  TEST_DESTINATION,
+  FRIENDBOT_URL,
+  STROOPS_PER_XLM,
+  DEFAULT_TX_TIMEOUT_SECONDS,
+  MAX_CONFIRMATION_RETRIES,
+  CONFIRMATION_CHECK_DELAY_MS,
+} from "./constants";
 
 const { Server } = rpc;
-
-const CONFIG = {
-  rpcUrl: "https://soroban-testnet.stellar.org",
-  networkPassphrase: Networks.TESTNET,
-  // Native XLM token contract on testnet
-  nativeTokenContract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-};
-
-// Use a test destination - this is just a random contract address for testing
-const TEST_DESTINATION = "CCIYFQ4FCK3WJ3YYUQPDEZZUVB63ZKMGBGOKGI5ZGT6HXUGHHAEHS2RE";
 
 async function main() {
   console.log("=== Stellar Transaction Test ===\n");
@@ -37,7 +35,7 @@ async function main() {
   // 2. Fund it with Friendbot
   console.log("\n2. Requesting XLM from Friendbot...");
   const friendbotResponse = await fetch(
-    `https://friendbot.stellar.org?addr=${tempKeypair.publicKey()}`
+    `${FRIENDBOT_URL}?addr=${tempKeypair.publicKey()}`
   );
   if (!friendbotResponse.ok) {
     throw new Error(`Friendbot request failed: ${friendbotResponse.status}`);
@@ -55,7 +53,7 @@ async function main() {
 
   // 5. Build the transaction
   console.log("\n4. Building transaction...");
-  const amount = BigInt(100 * 10_000_000); // 100 XLM in stroops
+  const amount = BigInt(100 * STROOPS_PER_XLM); // 100 XLM in stroops
 
   const transaction = new TransactionBuilder(sourceAccount, {
     fee: BASE_FEE,
@@ -69,7 +67,7 @@ async function main() {
         nativeToScVal(amount, { type: "i128" })
       )
     )
-    .setTimeout(30)
+    .setTimeout(DEFAULT_TX_TIMEOUT_SECONDS)
     .build();
 
   console.log(`   Transaction built, hash: ${transaction.hash().toString("hex").slice(0, 20)}...`);
@@ -104,8 +102,8 @@ async function main() {
       console.log("\n9. Waiting for confirmation...");
       let txResult = await server.getTransaction(result.hash);
       let attempts = 0;
-      while (txResult.status === "NOT_FOUND" && attempts < 30) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      while (txResult.status === "NOT_FOUND" && attempts < MAX_CONFIRMATION_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, CONFIRMATION_CHECK_DELAY_MS));
         txResult = await server.getTransaction(result.hash);
         attempts++;
         process.stdout.write(".");
@@ -131,7 +129,7 @@ async function main() {
               nativeToScVal(TEST_DESTINATION, { type: "address" })
             )
           )
-          .setTimeout(30)
+          .setTimeout(DEFAULT_TX_TIMEOUT_SECONDS)
           .build();
 
         const simResult = await server.simulateTransaction(balanceTx);

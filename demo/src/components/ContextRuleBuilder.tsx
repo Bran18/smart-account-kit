@@ -15,6 +15,7 @@ import {
   signersEqual,
 } from "smart-account-kit";
 import { rpc, xdr, Address, scValToNative } from "@stellar/stellar-sdk";
+import { STROOPS_PER_XLM } from "../constants";
 import type { ContextRule, Signer, ContextRuleType } from "smart-account-kit-bindings";
 import type { ConnectedWallet } from "smart-account-kit";
 import { SignerPicker, type SelectedSigner } from "./SignerPicker";
@@ -91,7 +92,7 @@ async function queryPolicyParams(
       const spendingLimitStroops = BigInt(value.spending_limit);
       const periodLedgers = Number(value.period_ledgers);
       // Convert stroops to XLM (divide by 10^7)
-      const spendingLimitXlm = Number(spendingLimitStroops) / 10_000_000;
+      const spendingLimitXlm = Number(spendingLimitStroops) / STROOPS_PER_XLM;
       // Convert ledgers to days (17280 ledgers per day)
       const periodDays = Math.round(periodLedgers / LEDGERS_PER_DAY);
       return {
@@ -625,7 +626,7 @@ export function ContextRuleBuilder({
         if (sp.policy.type === "threshold") {
           nativeParams = createThresholdParams(sp.threshold || 1);
         } else if (sp.policy.type === "spending_limit") {
-          const limitStroops = BigInt(Math.floor(parseFloat(sp.spendingLimit || "1000") * 10_000_000));
+          const limitStroops = BigInt(Math.floor(parseFloat(sp.spendingLimit || "1000") * STROOPS_PER_XLM));
           const periodLedgers = (sp.spendingPeriodDays || 1) * LEDGERS_PER_DAY;
           nativeParams = createSpendingLimitParams(limitStroops, periodLedgers);
         } else if (sp.policy.type === "weighted_threshold") {
@@ -788,7 +789,7 @@ export function ContextRuleBuilder({
             if (sp.policy.type === "threshold") {
               return createThresholdParams(sp.threshold || 1);
             } else if (sp.policy.type === "spending_limit") {
-              const limitStroops = BigInt(Math.floor(parseFloat(sp.spendingLimit || "1000") * 10_000_000));
+              const limitStroops = BigInt(Math.floor(parseFloat(sp.spendingLimit || "1000") * STROOPS_PER_XLM));
               const periodLedgers = (sp.spendingPeriodDays || 1) * LEDGERS_PER_DAY;
               return createSpendingLimitParams(limitStroops, periodLedgers);
             } else if (sp.policy.type === "weighted_threshold") {

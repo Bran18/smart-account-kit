@@ -56,3 +56,74 @@ export const LOCALSTORAGE_SESSION_KEY = "smart-account-kit:session";
 
 /** Default session expiration time in milliseconds (7 days) */
 export const DEFAULT_SESSION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+// ============================================================================
+// Ledger Configuration
+// ============================================================================
+
+/** Approximate number of ledgers per hour (~5 seconds per ledger) */
+export const LEDGERS_PER_HOUR = 720;
+
+/** Approximate number of ledgers per day */
+export const LEDGERS_PER_DAY = 17280;
+
+/** Approximate number of ledgers per week */
+export const LEDGERS_PER_WEEK = 120960;
+
+/** Buffer ledgers for auth entry expiration to ensure they don't expire during signing */
+export const AUTH_ENTRY_EXPIRATION_BUFFER = 100;
+
+// ============================================================================
+// Network URLs
+// ============================================================================
+
+/** Stellar Friendbot URL for testnet funding */
+export const FRIENDBOT_URL = "https://friendbot.stellar.org";
+
+// ============================================================================
+// Indexer Configuration
+// ============================================================================
+
+/** Default timeout for indexer requests in milliseconds */
+export const DEFAULT_INDEXER_TIMEOUT_MS = 10000;
+
+/** Default timeout for relayer requests in milliseconds (6 minutes for testnet retries) */
+export const DEFAULT_RELAYER_TIMEOUT_MS = 360000;
+
+// ============================================================================
+// IndexedDB Configuration
+// ============================================================================
+
+/** IndexedDB store name for credentials */
+export const IDB_STORE_CREDENTIALS = "credentials";
+
+/** IndexedDB store name for session data */
+export const IDB_STORE_SESSION = "session";
+
+/** IndexedDB key for current session */
+export const IDB_SESSION_KEY = "current";
+
+/** IndexedDB index name for contract ID lookups */
+export const IDB_INDEX_CONTRACT_ID = "contractId";
+
+/** IndexedDB index name for creation date sorting */
+export const IDB_INDEX_CREATED_AT = "createdAt";
+
+/** IndexedDB index name for primary credential filtering */
+export const IDB_INDEX_IS_PRIMARY = "isPrimary";
+
+// ============================================================================
+// API Paths
+// ============================================================================
+
+/** Indexer API path for credential lookup */
+export const API_PATH_LOOKUP = "/api/lookup";
+
+/** Indexer API path for address lookup */
+export const API_PATH_LOOKUP_ADDRESS = "/api/lookup/address";
+
+/** Indexer API path for contract details */
+export const API_PATH_CONTRACT = "/api/contract";
+
+/** Indexer API path for stats */
+export const API_PATH_STATS = "/api/stats";

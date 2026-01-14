@@ -9,11 +9,16 @@
  */
 
 import type { StorageAdapter, StoredCredential, StoredSession } from "../types";
-import { DB_NAME, DB_VERSION } from "../constants";
-
-const STORE_NAME = "credentials";
-const SESSION_STORE_NAME = "session";
-const SESSION_KEY = "current";
+import {
+  DB_NAME,
+  DB_VERSION,
+  IDB_STORE_CREDENTIALS,
+  IDB_STORE_SESSION,
+  IDB_SESSION_KEY,
+  IDB_INDEX_CONTRACT_ID,
+  IDB_INDEX_CREATED_AT,
+  IDB_INDEX_IS_PRIMARY,
+} from "../constants";
 
 export class IndexedDBStorage implements StorageAdapter {
   private dbName: string;
@@ -48,20 +53,20 @@ export class IndexedDBStorage implements StorageAdapter {
         const db = (event.target as IDBOpenDBRequest).result;
 
         // Create the credentials object store
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, {
+        if (!db.objectStoreNames.contains(IDB_STORE_CREDENTIALS)) {
+          const store = db.createObjectStore(IDB_STORE_CREDENTIALS, {
             keyPath: "credentialId",
           });
 
           // Create indexes for efficient queries
-          store.createIndex("contractId", "contractId", { unique: false });
-          store.createIndex("createdAt", "createdAt", { unique: false });
-          store.createIndex("isPrimary", "isPrimary", { unique: false });
+          store.createIndex(IDB_INDEX_CONTRACT_ID, IDB_INDEX_CONTRACT_ID, { unique: false });
+          store.createIndex(IDB_INDEX_CREATED_AT, IDB_INDEX_CREATED_AT, { unique: false });
+          store.createIndex(IDB_INDEX_IS_PRIMARY, IDB_INDEX_IS_PRIMARY, { unique: false });
         }
 
         // Create the session object store (added in v2)
-        if (!db.objectStoreNames.contains(SESSION_STORE_NAME)) {
-          db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
+        if (!db.objectStoreNames.contains(IDB_STORE_SESSION)) {
+          db.createObjectStore(IDB_STORE_SESSION, { keyPath: "id" });
         }
       };
     });
@@ -75,8 +80,8 @@ export class IndexedDBStorage implements StorageAdapter {
   ): Promise<T> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, mode);
-      const store = transaction.objectStore(STORE_NAME);
+      const transaction = db.transaction(IDB_STORE_CREDENTIALS, mode);
+      const store = transaction.objectStore(IDB_STORE_CREDENTIALS);
       const request = callback(store);
 
       request.onsuccess = () => resolve(request.result);
@@ -100,9 +105,9 @@ export class IndexedDBStorage implements StorageAdapter {
   async getByContract(contractId: string): Promise<StoredCredential[]> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const index = store.index("contractId");
+      const transaction = db.transaction(IDB_STORE_CREDENTIALS, "readonly");
+      const store = transaction.objectStore(IDB_STORE_CREDENTIALS);
+      const index = store.index(IDB_INDEX_CONTRACT_ID);
       const request = index.getAll(contractId);
 
       request.onsuccess = () => resolve(request.result);
@@ -141,9 +146,9 @@ export class IndexedDBStorage implements StorageAdapter {
   async saveSession(session: StoredSession): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(SESSION_STORE_NAME, "readwrite");
-      const store = transaction.objectStore(SESSION_STORE_NAME);
-      const request = store.put({ id: SESSION_KEY, ...session });
+      const transaction = db.transaction(IDB_STORE_SESSION, "readwrite");
+      const store = transaction.objectStore(IDB_STORE_SESSION);
+      const request = store.put({ id: IDB_SESSION_KEY, ...session });
 
       request.onsuccess = () => resolve();
       request.onerror = () =>
@@ -154,9 +159,9 @@ export class IndexedDBStorage implements StorageAdapter {
   async getSession(): Promise<StoredSession | null> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(SESSION_STORE_NAME, "readonly");
-      const store = transaction.objectStore(SESSION_STORE_NAME);
-      const request = store.get(SESSION_KEY);
+      const transaction = db.transaction(IDB_STORE_SESSION, "readonly");
+      const store = transaction.objectStore(IDB_STORE_SESSION);
+      const request = store.get(IDB_SESSION_KEY);
 
       request.onsuccess = () => {
         if (request.result) {
@@ -174,9 +179,9 @@ export class IndexedDBStorage implements StorageAdapter {
   async clearSession(): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(SESSION_STORE_NAME, "readwrite");
-      const store = transaction.objectStore(SESSION_STORE_NAME);
-      const request = store.delete(SESSION_KEY);
+      const transaction = db.transaction(IDB_STORE_SESSION, "readwrite");
+      const store = transaction.objectStore(IDB_STORE_SESSION);
+      const request = store.delete(IDB_SESSION_KEY);
 
       request.onsuccess = () => resolve();
       request.onerror = () =>

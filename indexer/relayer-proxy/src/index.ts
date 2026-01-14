@@ -21,6 +21,18 @@ import {
   PluginExecutionError,
   PluginTransportError,
 } from "@openzeppelin/relayer-plugin-channels";
+import {
+  SERVICE_NAME,
+  FRIENDBOT_URL,
+  API_KEY_PREFIX,
+  API_KEY_FIELD_NAMES,
+  API_KEY_MIN_LENGTH,
+  API_KEY_MAX_LENGTH,
+  MISSING_ACCOUNT_PATTERN,
+  TESTNET_RETRY_DURATION_MS,
+  IP_HEADERS,
+  UNKNOWN_IP,
+} from "./constants";
 
 interface StoredApiKey {
   apiKey: string;
@@ -42,10 +54,10 @@ app.use("*", cors());
  */
 function getClientIP(request: Request): string {
   return (
-    request.headers.get("CF-Connecting-IP") ||
-    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-    request.headers.get("X-Real-IP") ||
-    "unknown"
+    request.headers.get(IP_HEADERS.CF_CONNECTING_IP) ||
+    request.headers.get(IP_HEADERS.X_FORWARDED_FOR)?.split(",")[0]?.trim() ||
+    request.headers.get(IP_HEADERS.X_REAL_IP) ||
+    UNKNOWN_IP
   );
 }
 
@@ -53,7 +65,7 @@ function getClientIP(request: Request): string {
  * Generate a unique key for KV storage
  */
 function getKVKey(ip: string): string {
-  return `api-key:${ip}`;
+  return `${API_KEY_PREFIX}${ip}`;
 }
 
 /**
@@ -109,7 +121,7 @@ async function generateApiKey(env: Env): Promise<string | null> {
       try {
         const data = JSON.parse(text) as Record<string, unknown>;
         // Try various possible key names
-        const apiKey = data.apiKey || data.api_key || data.key || data.token;
+        const apiKey = API_KEY_FIELD_NAMES.map(name => data[name]).find(v => v);
         if (typeof apiKey === "string") {
           return apiKey;
         }
@@ -117,7 +129,7 @@ async function generateApiKey(env: Env): Promise<string | null> {
         return null;
       } catch {
         // Response might be plain text API key
-        if (text && text.length > 10 && text.length < 200) {
+        if (text && text.length > API_KEY_MIN_LENGTH && text.length < API_KEY_MAX_LENGTH) {
           return text.trim();
         }
         console.error("Could not parse API key response:", text);
@@ -148,7 +160,7 @@ function createClient(env: Env, apiKey: string): ChannelsClient {
  */
 function extractMissingAccount(errorMessage: string): string | null {
   // Pattern: "Account not found: GXXXX..."
-  const match = errorMessage.match(/Account not found:\s*(G[A-Z0-9]{55})/);
+  const match = errorMessage.match(MISSING_ACCOUNT_PATTERN);
   return match ? match[1] : null;
 }
 
@@ -158,7 +170,7 @@ function extractMissingAccount(errorMessage: string): string | null {
 async function fundWithFriendbot(account: string): Promise<boolean> {
   try {
     const response = await fetch(
-      `https://friendbot.stellar.org?addr=${encodeURIComponent(account)}`
+      `${FRIENDBOT_URL}?addr=${encodeURIComponent(account)}`
     );
     return response.ok;
   } catch (error) {
@@ -175,7 +187,7 @@ async function fundWithFriendbot(account: string): Promise<boolean> {
 app.get("/", (c) => {
   return c.json({
     status: "ok",
-    service: "smart-account-relayer-proxy",
+    service: SERVICE_NAME,
     network: c.env.NETWORK,
   });
 });
@@ -238,7 +250,6 @@ app.post("/", async (c) => {
 
     // On testnet, retry for up to 5 minutes to handle channel accounts needing funding
     // On mainnet, only try once (no friendbot available)
-    const TESTNET_RETRY_DURATION_MS = 5 * 60 * 1000; // 5 minutes
     const deadline = isTestnet ? Date.now() + TESTNET_RETRY_DURATION_MS : 0;
     const fundedAccounts = new Set<string>(); // Track accounts we've already funded
 

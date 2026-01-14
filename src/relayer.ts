@@ -13,10 +13,8 @@
  */
 
 import type { Transaction } from "@stellar/stellar-sdk";
-
-// Package version for client identification
-const CLIENT_NAME = "smart-account-kit";
-const CLIENT_VERSION = "0.2.5";
+import { NAME, VERSION } from "./version";
+import { DEFAULT_RELAYER_TIMEOUT_MS } from "./constants";
 
 /**
  * Response from Relayer transaction submission
@@ -97,7 +95,7 @@ export class RelayerClient {
   // Default timeout of 6 minutes to accommodate testnet retries (up to 5 min)
   // when Relayer channel accounts need funding after testnet reset.
   // Mainnet requests return quickly; this only affects max wait time.
-  constructor(url: string, timeout = 360000) {
+  constructor(url: string, timeout = DEFAULT_RELAYER_TIMEOUT_MS) {
     if (!url) {
       throw new Error("Relayer URL is required");
     }
@@ -147,8 +145,8 @@ export class RelayerClient {
     // Build headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-Client-Name": CLIENT_NAME,
-      "X-Client-Version": CLIENT_VERSION,
+      "X-Client-Name": NAME,
+      "X-Client-Version": VERSION,
     };
 
     // Build request body - always use func + auth, never xdr
@@ -241,8 +239,8 @@ export class RelayerClient {
     // Build headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-Client-Name": CLIENT_NAME,
-      "X-Client-Version": CLIENT_VERSION,
+      "X-Client-Name": NAME,
+      "X-Client-Version": VERSION,
     };
 
     // Build request body

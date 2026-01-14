@@ -11,6 +11,13 @@
 
 import { startAuthentication } from "@simplewebauthn/browser";
 import { rpc, xdr, Address, scValToNative } from "@stellar/stellar-sdk";
+import {
+  DEFAULT_INDEXER_URL,
+  DEFAULT_RPC_URL,
+  LEDGERS_PER_DAY,
+  STROOPS_PER_XLM,
+  truncateAddress,
+} from "./constants";
 
 // Types
 interface SmartAccountInfo {
@@ -70,8 +77,8 @@ const indexerUrlInput = document.getElementById("indexer-url") as HTMLInputEleme
 const rpcUrlInput = document.getElementById("rpc-url") as HTMLInputElement;
 
 // Set default values from environment variables (with fallbacks)
-indexerUrlInput.value = import.meta.env.VITE_INDEXER_URL || "https://smart-account-indexer.sdf-ecosystem.workers.dev";
-rpcUrlInput.value = import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org";
+indexerUrlInput.value = import.meta.env.VITE_INDEXER_URL || DEFAULT_INDEXER_URL;
+rpcUrlInput.value = import.meta.env.VITE_RPC_URL || DEFAULT_RPC_URL;
 
 // ============================================================================
 // Utility Functions
@@ -87,9 +94,8 @@ function hideStatus() {
   statusEl.style.display = "none";
 }
 
-function truncateContractId(contractId: string): string {
-  return `${contractId.slice(0, 8)}...${contractId.slice(-8)}`;
-}
+/** Alias for backward compatibility */
+const truncateContractId = truncateAddress;
 
 // ============================================================================
 // Policy RPC Loading
@@ -200,11 +206,11 @@ function formatPolicyParamsFromRpc(params: any): string {
 
     // Spending limit policy
     if (params.spending_limit !== undefined) {
-      const limitXlm = Number(params.spending_limit) / 10_000_000;
+      const limitXlm = Number(params.spending_limit) / STROOPS_PER_XLM;
       parts.push(`limit: ${limitXlm} XLM`);
     }
     if (params.period_ledgers !== undefined) {
-      const days = Math.round(Number(params.period_ledgers) / (17280)); // ~17280 ledgers per day
+      const days = Math.round(Number(params.period_ledgers) / LEDGERS_PER_DAY);
       parts.push(`period: ${days} day${days !== 1 ? "s" : ""}`);
     }
 

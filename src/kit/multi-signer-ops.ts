@@ -2,7 +2,7 @@ import type { SubmissionMethod, SubmissionOptions, TransactionResult, SelectedSi
 import type { ExternalSignerManager } from "../external-signers";
 import { rpc } from "@stellar/stellar-sdk";
 import { Address, Keypair, Operation, TransactionBuilder, Transaction, hash, xdr } from "@stellar/stellar-sdk";
-import { BASE_FEE } from "../constants";
+import { BASE_FEE, AUTH_ENTRY_EXPIRATION_BUFFER, STROOPS_PER_XLM } from "../constants";
 
 export async function multiSignersTransfer(
   deps: {
@@ -52,7 +52,7 @@ export async function multiSignersTransfer(
   }
 
   try {
-    const amountInStroops = BigInt(Math.round(amount * 10_000_000));
+    const amountInStroops = BigInt(Math.round(amount * STROOPS_PER_XLM));
 
     const tokenAddress = Address.fromString(tokenContract);
     const fromAddress = Address.fromString(contractId);
@@ -104,7 +104,7 @@ export async function multiSignersTransfer(
 
     const signedAuthEntries: xdr.SorobanAuthorizationEntry[] = [];
     const { sequence } = await deps.rpc.getLatestLedger();
-    const expiration = sequence + 100;
+    const expiration = sequence + AUTH_ENTRY_EXPIRATION_BUFFER;
 
     for (const entry of authEntries) {
       const credentials = entry.credentials();

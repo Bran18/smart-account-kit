@@ -8,6 +8,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import postgres from "postgres";
+import {
+  SERVICE_NAME,
+  DEFAULT_PAGINATION_LIMIT,
+  ERROR_MESSAGES,
+  EVENT_TYPES,
+} from "./constants";
 
 // Extend the generated Env interface with secrets (not in wrangler.toml)
 declare global {
@@ -35,7 +41,7 @@ app.use("*", cors());
 
 // Health check
 app.get("/", (c) => {
-  return c.json({ status: "ok", service: "smart-account-indexer" });
+  return c.json({ status: "ok", service: SERVICE_NAME });
 });
 
 // ============================================================================
@@ -76,7 +82,7 @@ app.get("/api/lookup/:credentialId", async (c) => {
     });
   } catch (error) {
     console.error("Lookup error:", error);
-    return c.json({ error: "Database query failed" }, 500);
+    return c.json({ error: ERROR_MESSAGES.DATABASE_QUERY_FAILED }, 500);
   } finally {
     c.executionCtx.waitUntil(sql.end());
   }
@@ -113,7 +119,7 @@ app.get("/api/lookup/address/:signerAddress", async (c) => {
     });
   } catch (error) {
     console.error("Address lookup error:", error);
-    return c.json({ error: "Database query failed" }, 500);
+    return c.json({ error: ERROR_MESSAGES.DATABASE_QUERY_FAILED }, 500);
   } finally {
     c.executionCtx.waitUntil(sql.end());
   }
@@ -134,7 +140,7 @@ app.get("/api/contract/:contractId", async (c) => {
     `;
 
     if (!summary) {
-      return c.json({ error: "Contract not found" }, 404);
+      return c.json({ error: ERROR_MESSAGES.CONTRACT_NOT_FOUND }, 404);
     }
 
     // First, find which context rules have been removed
@@ -147,11 +153,11 @@ app.get("/api/contract/:contractId", async (c) => {
           ledger_sequence
         FROM smart_account_signer_events
         WHERE contract_id = ${contractId}
-          AND event_type IN ('context_rule_added', 'context_rule_removed')
+          AND event_type IN (${EVENT_TYPES.CONTEXT_RULE_ADDED}, ${EVENT_TYPES.CONTEXT_RULE_REMOVED})
         ORDER BY (topics::jsonb->1->>'u32')::int, ledger_sequence DESC
       )
       SELECT context_rule_id FROM context_rule_events
-      WHERE event_type = 'context_rule_removed'
+      WHERE event_type = ${EVENT_TYPES.CONTEXT_RULE_REMOVED}
     `;
     const removedRuleIds = new Set(removedRules.map(r => r.context_rule_id));
 
@@ -170,7 +176,7 @@ app.get("/api/contract/:contractId", async (c) => {
         ORDER BY context_rule_id, signer_type, COALESCE(signer_address, ''), COALESCE(credential_id, ''), ledger_sequence DESC
       )
       SELECT * FROM latest_signer_events
-      WHERE event_type IN ('context_rule_added', 'signer_added')
+      WHERE event_type IN (${EVENT_TYPES.CONTEXT_RULE_ADDED}, ${EVENT_TYPES.SIGNER_ADDED})
       ORDER BY context_rule_id, signer_type, ledger_sequence
     `;
 
@@ -188,7 +194,7 @@ app.get("/api/contract/:contractId", async (c) => {
         ORDER BY context_rule_id, policy_address, ledger_sequence DESC
       )
       SELECT * FROM latest_policy_events
-      WHERE event_type IN ('policy_added', 'context_rule_added')
+      WHERE event_type IN (${EVENT_TYPES.POLICY_ADDED}, ${EVENT_TYPES.CONTEXT_RULE_ADDED})
       ORDER BY context_rule_id, ledger_sequence
     `;
 
@@ -239,7 +245,7 @@ app.get("/api/contract/:contractId", async (c) => {
     });
   } catch (error) {
     console.error("Contract details error:", error);
-    return c.json({ error: "Database query failed" }, 500);
+    return c.json({ error: ERROR_MESSAGES.DATABASE_QUERY_FAILED }, 500);
   } finally {
     c.executionCtx.waitUntil(sql.end());
   }
@@ -272,7 +278,7 @@ app.get("/api/contract/:contractId/signers", async (c) => {
     });
   } catch (error) {
     console.error("Contract signers error:", error);
-    return c.json({ error: "Database query failed" }, 500);
+    return c.json({ error: ERROR_MESSAGES.DATABASE_QUERY_FAILED }, 500);
   } finally {
     c.executionCtx.waitUntil(sql.end());
   }
@@ -282,7 +288,7 @@ app.get("/api/contract/:contractId/signers", async (c) => {
  * List all unique credential IDs (for debugging/testing)
  */
 app.get("/api/credentials", async (c) => {
-  const limit = parseInt(c.req.query("limit") || "100");
+  const limit = parseInt(c.req.query("limit") || String(DEFAULT_PAGINATION_LIMIT));
   const sql = postgres(c.env.DATABASE_URL);
 
   try {
@@ -304,7 +310,7 @@ app.get("/api/credentials", async (c) => {
     });
   } catch (error) {
     console.error("Credentials error:", error);
-    return c.json({ error: "Database query failed" }, 500);
+    return c.json({ error: ERROR_MESSAGES.DATABASE_QUERY_FAILED }, 500);
   } finally {
     c.executionCtx.waitUntil(sql.end());
   }
@@ -343,7 +349,7 @@ app.get("/api/stats", async (c) => {
     });
   } catch (error) {
     console.error("Stats error:", error);
-    return c.json({ error: "Database query failed" }, 500);
+    return c.json({ error: ERROR_MESSAGES.DATABASE_QUERY_FAILED }, 500);
   } finally {
     c.executionCtx.waitUntil(sql.end());
   }

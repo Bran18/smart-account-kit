@@ -6,35 +6,34 @@
 
 import {
   Contract,
-  Networks,
   nativeToScVal,
   Keypair,
   hash,
   TransactionBuilder,
   BASE_FEE,
   xdr,
-  Operation,
   rpc,
 } from "@stellar/stellar-sdk";
+import {
+  CONFIG,
+  TEST_DESTINATION,
+  STROOPS_PER_XLM,
+  DEFAULT_TX_TIMEOUT_SECONDS,
+  DEPLOYER_ENTROPY,
+} from "./constants";
 
 const { Server } = rpc;
 
-const CONFIG = {
-  rpcUrl: "https://soroban-testnet.stellar.org",
-  networkPassphrase: Networks.TESTNET,
-  nativeTokenContract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-};
-
 // Derive the same deployer keypair used by the SDK
 const DEPLOYER_KEYPAIR = Keypair.fromRawEd25519Seed(
-  hash(Buffer.from("openzeppelin-smart-account-kit"))
+  hash(Buffer.from(DEPLOYER_ENTROPY))
 );
 
 // The smart wallet contract (already deployed)
 const SMART_WALLET = "CDANWYENKH6PTTY6GDTMDAMYRHMU4SBRPX5NUDYDMTYVOIF32ASZFU4Y";
 
 // A recipient address
-const RECIPIENT = "CCIYFQ4FCK3WJ3YYUQPDEZZUVB63ZKMGBGOKGI5ZGT6HXUGHHAEHS2RE";
+const RECIPIENT = TEST_DESTINATION;
 
 async function testAuthEntry() {
   console.log("=== Testing Auth Entry Signing ===\n");
@@ -52,7 +51,7 @@ async function testAuthEntry() {
   console.log("   Sequence:", sourceAccount.sequenceNumber());
 
   // Build a transfer from the smart wallet
-  const amount = BigInt(10 * 10_000_000); // 10 XLM in stroops
+  const amount = BigInt(10 * STROOPS_PER_XLM); // 10 XLM in stroops
 
   console.log("\n2. Building simulation transaction...");
   const simulationTx = new TransactionBuilder(sourceAccount, {
@@ -67,7 +66,7 @@ async function testAuthEntry() {
         nativeToScVal(amount, { type: "i128" })
       )
     )
-    .setTimeout(30)
+    .setTimeout(DEFAULT_TX_TIMEOUT_SECONDS)
     .build();
 
   console.log("   Transaction built");
